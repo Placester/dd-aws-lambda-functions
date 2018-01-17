@@ -31,7 +31,7 @@ metadata = {
 }
 
 try:
-    metadata = merge_dicts(metadata, json.dumps(os.environ.get('METADATA', '{}')))
+    metadata = merge_dicts(metadata, json.loads(os.environ.get('METADATA', '{}')))
 except Exception:
     pass
 
