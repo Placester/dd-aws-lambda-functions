@@ -31,6 +31,17 @@ variable "metadata" {
   default = {}
 }
 
+variable "log_tags" {
+  type        = "map"
+  default     = {}
+  description = "map of custom key:value dd tags on each log statement"
+}
+
+variable "tags" {
+  type    = "map"
+  default = {}
+}
+
 data "archive_file" "fn" {
   type        = "zip"
   source_file = "${path.module}/lambda_function.py"
@@ -53,10 +64,13 @@ resource "aws_lambda_function" "fn" {
 
   environment {
     variables = {
-      DD_API_KEY = "${var.DD_API_KEY}"
-      METADATA   = "${jsonencode(var.metadata)}"
+      DD_API_KEY  = "${var.DD_API_KEY}"
+      METADATA    = "${jsonencode(var.metadata)}"
+      CUSTOM_TAGS = "${jsonencode(var.log_tags)}"
     }
   }
+
+  tags = "${var.tags}"
 
   depends_on = ["data.archive_file.fn"]
 }

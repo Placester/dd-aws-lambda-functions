@@ -27,10 +27,16 @@ DD_CUSTOM_TAGS = 'ddtags'
 METADATA = {
     'ddsourcecategory': 'aws',
 }
+CUSTOM_TAGS = {}
 
 
 try:
     METADATA = merge_dicts(METADATA, json.loads(os.environ.get('METADATA', '{}')))
+except Exception:
+    pass
+
+try:
+    CUSTOM_TAGS = merge_dicts(CUSTOM_TAGS, json.loads(os.environ.get('CUSTOM_TAGS', '{}')))
 except Exception:
     pass
 
@@ -58,8 +64,13 @@ def lambda_handler(event, context):
     aws_meta['function_version'] = context.function_version
     aws_meta['invoked_function_arn'] = context.invoked_function_arn
     #Add custom tags here by adding new value with the following format 'key1:value1, key2:value2'  - might be subject to modifications
-    METADATA[DD_CUSTOM_TAGS] = 'functionname:{},memorysize:{}'.format(context.function_name,
+    custom_tags = 'functionname:{},memorysize:{}'.format(context.function_name,
                                                                       context.memory_limit_in_mb)
+    #Add remaining CUSTOM_TAGS to the data dog label based on the JSON environment CUSTOM_TAGS
+    for key in CUSTOM_TAGS:
+        custom_tags = ','.join([custom_tags, '{}:{}'.format(key, CUSTOM_TAGS[key])])
+
+    METADATA[DD_CUSTOM_TAGS] = custom_tags
 
     try:
         # Route to the corresponding parser
