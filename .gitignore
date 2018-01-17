@@ -5,4 +5,4 @@ base.zip
 *.tfvars
 *.tfstate*
 .terraform
-.zip
+*.zip

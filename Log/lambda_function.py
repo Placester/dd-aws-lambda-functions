@@ -32,7 +32,7 @@ metadata = {
 
 try:
   if os.environ['METADATA']:
-    metadata = merge_dicts(metadata, json.dumps(os.environ['METADATA']))
+    metadata = merge_dicts(metadata, json.loads(os.environ['METADATA']))
 except Exception:
     pass
 
