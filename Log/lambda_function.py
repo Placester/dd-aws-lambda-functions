@@ -7,14 +7,14 @@ from __future__ import print_function
 
 import base64
 import json
-import urllib
-import boto3
-import time
 import os
+import re
 import socket
 import ssl
-import re
+import urllib
 import zlib
+
+import boto3
 
 # Parameters
 # ddApiKey: Datadog API Key
@@ -31,8 +31,7 @@ metadata = {
 }
 
 try:
-  if os.environ['METADATA']:
-    metadata = merge_dicts(metadata, json.loads(os.environ['METADATA']))
+    metadata = merge_dicts(metadata, json.dumps(os.environ.get('METADATA', '{}')))
 except Exception:
     pass
 
