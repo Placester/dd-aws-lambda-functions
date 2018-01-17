@@ -30,6 +30,11 @@ metadata = {
     "ddsourcecategory": "aws",
 }
 
+try:
+  if os.environ['METADATA']:
+    metadata = merge_dicts(metadata, json.dumps(os.environ['METADATA']))
+except Exception:
+    pass
 
 host = "intake.logs.datadoghq.com"
 ssl_port = 10516

@@ -2,3 +2,7 @@ env
 base.zip
 */gen
 */env
+*.tfvars
+*.tfstate*
+.terraform
+.zip
