@@ -14,7 +14,8 @@ import os
 import socket
 import ssl
 import re
-import zlib
+import StringIO
+import gzip
 
 # Parameters
 # ddApiKey: Datadog API Key
@@ -30,8 +31,13 @@ metadata = {
     "ddsourcecategory": "aws",
 }
 
+try:
+    metadata = merge_dicts(metadata, json.loads(os.environ.get('METADATA', '{}')))
+except Exception:
+    pass
 
-host = "intake.logs.datadoghq.com"
+
+host = "lambda-intake.logs.datadoghq.com"
 ssl_port = 10516
 cloudtrail_regex = re.compile('\d+_CloudTrail_\w{2}-\w{4,9}-\d_\d{8}T\d{4}Z.+.json.gz$', re.I)
 
@@ -47,11 +53,7 @@ def lambda_handler(event, context):
         )
 
     # Attach Datadog's Socket
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    port = ssl_port
-    s = ssl.wrap_socket(s)
-    s.connect((host, port))
+    s = connect_to_datadog(host, ssl_port)
 
     # Add the context to meta
     if "aws" not in metadata:
@@ -60,30 +62,47 @@ def lambda_handler(event, context):
     aws_meta["function_version"] = context.function_version
     aws_meta["invoked_function_arn"] = context.invoked_function_arn
     #Add custom tags here by adding new value with the following format "key1:value1, key2:value2"  - might be subject to modifications
-    metadata[DD_CUSTOM_TAGS] = "functionname:" + context.function_name+ ",memorysize:"+ context.memory_limit_in_mb
-
+    metadata[DD_CUSTOM_TAGS] = "forwardername:" + context.function_name.lower()+ ",memorysize:"+ context.memory_limit_in_mb
 
     try:
-        # Route to the corresponding parser
-        event_type = parse_event_type(event)
-
-        if event_type == "s3":
-            logs = s3_handler(s, event)
-
-        elif event_type == "awslogs":
-            logs = awslogs_handler(s, event)
-
+        logs = generate_logs(event)
         for log in logs:
-            send_entry(s, log)
-
+            s = safe_submit_log(s, log)
     except Exception as e:
-        # Logs through the socket the error
-        err_message = 'Error parsing the object. Exception: {}'.format(str(e))
-        send_entry(s, err_message)
-        raise e
+        print('Unexpected exception: {} for event {}'.format(str(e), event))
     finally:
         s.close()
 
+def connect_to_datadog(host, port):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s = ssl.wrap_socket(s)
+    s.connect((host, port))
+    return s
+
+def generate_logs(event):
+    try:
+        # Route to the corresponding parser
+        event_type = parse_event_type(event)
+        if event_type == "s3":
+            logs = s3_handler(event)
+        elif event_type == "awslogs":
+            logs = awslogs_handler(event)
+        elif event_type == "events":
+            logs = cwevent_handler(event)
+    except Exception as e:
+        # Logs through the socket the error
+        err_message = 'Error parsing the object. Exception: {} for event {}'.format(str(e), event)
+        logs = [err_message]
+    return logs
+
+def safe_submit_log(s, log):
+    try:
+        send_entry(s, log)
+    except Exception as e:
+        # retry once
+        s = connect_to_datadog(host, ssl_port)
+        send_entry(s, log)
+    return s
 
 # Utility functions
 
@@ -95,11 +114,13 @@ def parse_event_type(event):
     elif "awslogs" in event:
         return "awslogs"
 
+    elif "detail" in event:
+        return "events"
     raise Exception("Event type not supported (see #Event supported section)")
 
 
 # Handle S3 events
-def s3_handler(s, event):
+def s3_handler(event):
     s3 = boto3.client('s3')
 
     # Get the object from the event and show its content type
@@ -117,7 +138,8 @@ def s3_handler(s, event):
 
     # If the name has a .gz extension, then decompress the data
     if key[-3:] == '.gz':
-        data = zlib.decompress(data, 16 + zlib.MAX_WBITS)
+        with gzip.GzipFile(fileobj=StringIO.StringIO(data)) as decompress_stream:
+            data = decompress_stream.read()
 
     if is_cloudtrail(str(key)):
         cloud_trail = json.loads(data)
@@ -135,10 +157,11 @@ def s3_handler(s, event):
     return structured_logs
 
 
-# Handle CloudWatch events and logs
-def awslogs_handler(s, event):
+# Handle CloudWatch logs
+def awslogs_handler(event):
     # Get logs
-    data = zlib.decompress(base64.b64decode(event["awslogs"]["data"]), 16 + zlib.MAX_WBITS)
+    with gzip.GzipFile(fileobj=StringIO.StringIO(base64.b64decode(event["awslogs"]["data"]))) as decompress_stream:
+        data = decompress_stream.read()
     logs = json.loads(str(data))
     #Set the source on the logs
     source = logs.get("logGroup", "cloudwatch")
@@ -162,6 +185,23 @@ def awslogs_handler(s, event):
 
     return structured_logs
 
+#Handle Cloudwatch Events
+def cwevent_handler(event):
+
+    data = event
+
+    #Set the source on the log
+    source = data.get("source", "cloudwatch")
+    service = source.split(".")
+    if len(service)>1:
+        metadata[DD_SOURCE] = service[1]
+    else:
+        metadata[DD_SOURCE] = "cloudwatch"
+
+    structured_logs = []
+    structured_logs.append(data)
+
+    return structured_logs
 
 def send_entry(s, log_entry):
     # The log_entry can only be a string or a dict
@@ -205,19 +245,14 @@ def is_cloudtrail(key):
     return bool(match)
 
 def parse_event_source(event, key):
-    if "lambda" in key:
-        return "lambda"
-    if is_cloudtrail(str(key)):
-        return "cloudtrail"
+    for source in ["lambda", "redshift", "cloudfront", "kinesis", "mariadb", "mysql", "apigateway", "route53", "vpc", "rds"]:
+        if source in key:
+            return source
     if "elasticloadbalancing" in key:
         return "elb"
-    if "redshift" in key:
-        return "redshift"
-    if "cloudfront" in key:
-        return "cloudfront"
-    if "kinesis" in key:
-        return "kinesis"
-    if "awslog" in event:
+    if is_cloudtrail(str(key)):
+        return "cloudtrail"
+    if "awslogs" in event:
         return "cloudwatch"
     if "Records" in event and len(event["Records"]) > 0:
         if "s3" in event["Records"][0]:
