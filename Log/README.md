@@ -59,3 +59,17 @@ You can optionally change the structured metadata. The metadata is merged to all
 You are all set!
 
 The test should be quite natural if the pointed bucket(s) are filling up. There may be some latency between the time a S3 log file is posted and the Lambda function wakes up.
+
+# Terraform Usage
+
+```
+module "dd_appender" {
+  source     = "github.com/Placester/dd-aws-lambda-functions//Log"
+  DD_API_KEY = {}
+  role       = ""
+
+  metadata = {
+    service = "my_service"
+  }
+}
+```
