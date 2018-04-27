@@ -27,19 +27,15 @@ variable "timeout" {
 }
 
 variable "metadata" {
-  type    = "map"
-  default = {}
-}
-
-variable "log_tags" {
   type        = "map"
   default     = {}
-  description = "map of custom key:value dd tags on each log statement"
+  description = "map of custom key:value entries on each log statement"
 }
 
 variable "tags" {
-  type    = "map"
-  default = {}
+  type        = "map"
+  default     = {}
+  description = "lambda function tags"
 }
 
 data "archive_file" "fn" {
@@ -64,9 +60,8 @@ resource "aws_lambda_function" "fn" {
 
   environment {
     variables = {
-      DD_API_KEY  = "${var.DD_API_KEY}"
-      METADATA    = "${jsonencode(var.metadata)}"
-      CUSTOM_TAGS = "${jsonencode(var.log_tags)}"
+      DD_API_KEY = "${var.DD_API_KEY}"
+      METADATA   = "${jsonencode(var.metadata)}"
     }
   }
 

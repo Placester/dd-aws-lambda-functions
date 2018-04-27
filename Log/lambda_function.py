@@ -31,6 +31,11 @@ metadata = {
     "ddsourcecategory": "aws",
 }
 
+try:
+    metadata = merge_dicts(metadata, json.loads(os.environ.get('METADATA', '{}')))
+except Exception:
+    pass
+
 
 host = "lambda-intake.logs.datadoghq.com"
 ssl_port = 10516
