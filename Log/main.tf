@@ -2,10 +2,6 @@ variable "aws_region" {
   default = "us-east-1"
 }
 
-provider "aws" {
-  region = "${var.aws_region}"
-}
-
 variable "DD_API_KEY" {
   description = "This token is used to associate AWS CloudWatch logs to a log in your Logentries account."
 }
