@@ -6,7 +6,7 @@ AWS lambda function to ship ELB, S3, CloudTrail, VPC, CloudFront and CloudWatch 
 # Features
 
 - Use AWS Lambda to re-route triggered S3 events to Datadog
-- ELB, S3, CloudTrail, VPC and CloudFont logs can be forwarded
+- Cloudwatch, ELB, S3, CloudTrail, VPC and CloudFont logs can be forwarded
 - SSL Security
 - JSON events providing details about S3 documents forwarded
 - Structured meta-information can be attached to the events
@@ -36,17 +36,38 @@ At the top of the script you'll find a section called `#Parameters`, that's wher
 ```
 #Parameters
 ddApiKey = "<your_api_key>"
-metadata = {"context":{"foo": "bar"}}
+# metadata: Additional metadata to send with the logs
+metadata = {
+    "ddsourcecategory": "aws"
+}
 ```
 
 - **API key**:
 
-Replace `<your_api_key>`: Your Datadog's API key is available in your platform.
-You can also set it thanks to the `DD_API_KEY` environment variable.
+There are 3 possibilities to set your Datadog's API key (available in your Datadog platform):
 
-- **metadata**:
+1. **KMS Encrypted key (recommended)**: Use the `DD_KMS_API_KEY` environment variable to use a KMS encrypted key. Make sure that the Lambda excution role is listed in the KMS Key user in https://console.aws.amazon.com/iam/home#encryptionKeys.
+2. **Environment Variable**: Use the `DD_API_KEY` environment variable of the Lambda function
+3. **Manual**: Replace `<your_api_key>` in the code: 
+
+- **(Optional) Metadata**:
 
 You can optionally change the structured metadata. The metadata is merged to all the log events sent by the Lambda script.
+Example: to add the environment value to your logs:
+
+```
+metadata = {
+    "ddsourcecategory": "aws",
+    "env": "prod",
+}
+```
+
+- **(Optional) Custom Tags** 
+
+You have two options to add custom tags to your logs:
+
+- Manually by editing the lambda code [there](https://github.com/DataDog/dd-aws-lambda-functions/blob/master/Log/lambda_function.py#L79).
+- Automatically with the `DD_TAGS` environment variable (tags must be a comma-separated list of strings).
 
 ## 3. Configuration
 
@@ -56,20 +77,6 @@ You can optionally change the structured metadata. The metadata is merged to all
 
 ## 4. Testing it
 
-You are all set!
+If the test "succeeded", you are all set! The test log will not show up in the platform.
 
-The test should be quite natural if the pointed bucket(s) are filling up. There may be some latency between the time a S3 log file is posted and the Lambda function wakes up.
-
-# Terraform Usage
-
-```
-module "dd_appender" {
-  source     = "github.com/Placester/dd-aws-lambda-functions//Log"
-  DD_API_KEY = {}
-  role       = ""
-
-  metadata = {
-    service = "my_service"
-  }
-}
-```
+For S3 logs, there may be some latency between the time a first S3 log file is posted and the Lambda function wakes up.
