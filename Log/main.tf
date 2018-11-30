@@ -15,11 +15,13 @@ variable "role" {
 }
 
 variable "memory_size" {
-  default = 1024
+  default     = 1024
+  description = "Set the memory to the highest possible value"
 }
 
 variable "timeout" {
-  default = 300
+  default     = 120
+  description = "Set also the timeout limit. We recommends 120 seconds to deal with big files."
 }
 
 variable "metadata" {
