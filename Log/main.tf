@@ -25,7 +25,7 @@ variable "timeout" {
 variable "metadata" {
   type        = "map"
   default     = {}
-  description = "map of custom key:value entries on each log statement"
+  description = "DD_TAGS map of custom key:value entries on each log statement"
 }
 
 variable "tags" {
@@ -57,7 +57,9 @@ resource "aws_lambda_function" "fn" {
   environment {
     variables = {
       DD_API_KEY = "${var.DD_API_KEY}"
-      METADATA   = "${jsonencode(var.metadata)}"
+
+      # convert JSON k:v map to k:v,k:v data dog tags
+      DD_TAGS = "${join(",", formatlist("%s:%s", keys(var.metadata), values(var.metadata)))}"
     }
   }
 
