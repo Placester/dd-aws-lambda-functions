@@ -101,3 +101,17 @@ For S3 logs, there may be some latency between the time a first S3 log file is p
 If there are multiline logs in s3, set `DD_MULTILINE_LOG_REGEX_PATTERN` environment variable to the specified regex pattern to detect for a new log line.
 
 - Example: for multiline logs beginning with pattern `11/10/2014`: `DD_MULTILINE_LOG_REGEX_PATTERN="\d{2}\/\d{2}\/\d{4}"`
+
+## Terraform Usage
+
+ ```hcl
+module "dd_appender" {
+  source     = "github.com/Placester/dd-aws-lambda-functions//aws/logs_monitoring"
+  DD_API_KEY = ""
+  role       = ""
+  metadata = {
+    service = "my_service"
+    other_tag = "some_other_value"
+  }
+}
+```
