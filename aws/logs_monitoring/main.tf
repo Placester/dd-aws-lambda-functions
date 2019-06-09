@@ -15,17 +15,19 @@ variable "role" {
 }
 
 variable "memory_size" {
-  default = 1024
+  default     = 1024
+  description = "Set the memory to the highest possible value"
 }
 
 variable "timeout" {
-  default = 300
+  default     = 120
+  description = "Set also the timeout limit. We recommends 120 seconds to deal with big files."
 }
 
 variable "metadata" {
   type        = "map"
   default     = {}
-  description = "map of custom key:value entries on each log statement"
+  description = "DD_TAGS map of custom key:value entries on each log statement"
 }
 
 variable "tags" {
@@ -57,7 +59,9 @@ resource "aws_lambda_function" "fn" {
   environment {
     variables = {
       DD_API_KEY = "${var.DD_API_KEY}"
-      METADATA   = "${jsonencode(var.metadata)}"
+
+      # convert JSON k:v map to k:v,k:v data dog tags
+      DD_TAGS = "${join(",", formatlist("%s:%s", keys(var.metadata), values(var.metadata)))}"
     }
   }
 

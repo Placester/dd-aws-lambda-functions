@@ -1,7 +1,7 @@
 # Unless explicitly stated otherwise all files in this repository are licensed
 # under the Apache License Version 2.0.
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
-# Copyright 2017 Datadog, Inc.
+# Copyright 2018 Datadog, Inc.
 
 from __future__ import print_function
 
@@ -19,6 +19,8 @@ from collections import defaultdict, Counter
 import boto3
 
 print('Loading function')
+
+DD_SITE = os.getenv("DD_SITE", default="datadoghq.com")
 
 # retrieve datadog options from KMS
 KMS_ENCRYPTED_KEYS = os.environ['kmsEncryptedKeys']
@@ -228,13 +230,19 @@ def process_duration(start, end, tags, timestamp):
 
 
 def process_packets(packets, tags, timestamp):
-    stats.histogram("packets.per_request", int(packets), tags=tags, timestamp=timestamp)
-    stats.increment("packets.total", int(packets), tags=tags, timestamp=timestamp)
+    try:
+        stats.histogram("packets.per_request", int(packets), tags=tags, timestamp=timestamp)
+        stats.increment("packets.total", int(packets), tags=tags, timestamp=timestamp)
+    except ValueError:
+        pass
 
 
 def process_bytes(_bytes, tags, timestamp):
-    stats.histogram("bytes.per_request", int(_bytes), tags=tags, timestamp=timestamp)
-    stats.increment("bytes.total", int(_bytes), tags=tags, timestamp=timestamp)
+    try:
+        stats.histogram("bytes.per_request", int(_bytes), tags=tags, timestamp=timestamp)
+        stats.increment("bytes.total", int(_bytes), tags=tags, timestamp=timestamp)
+    except ValueError:
+        pass
 
 
 class Stats(object):
@@ -308,7 +316,7 @@ class Stats(object):
 
         creds = urllib.urlencode(datadog_keys)
         data = json.dumps(metrics_dict)
-        url = '%s?%s' % (datadog_keys.get('api_host', 'https://app.datadoghq.com/api/v1/series'), creds)
+        url = '%s?%s' % (datadog_keys.get('api_host', 'https://app.%s/api/v1/series' % DD_SITE), creds)
         req = urllib2.Request(url, data, {'Content-Type': 'application/json'})
         response = urllib2.urlopen(req)
         print('INFO Submitted data with status {}'.format(response.getcode()))
