@@ -6,10 +6,12 @@ AWS lambda function to ship ELB, S3, CloudTrail, VPC, CloudFront and CloudWatch 
 # Features
 
 - Use AWS Lambda to re-route triggered S3 events to Datadog
+- Use AWS Lambda to re-route triggered Kinesis data stream events to Datadog, only the Cloudwatch logs are supported
 - Cloudwatch, ELB, S3, CloudTrail, VPC and CloudFont logs can be forwarded
 - SSL Security
 - JSON events providing details about S3 documents forwarded
 - Structured meta-information can be attached to the events
+- Multiline Log Support (S3 Only)
 
 # Quick Start
 
@@ -69,14 +71,33 @@ You have two options to add custom tags to your logs:
 - Manually by editing the lambda code [there](https://github.com/DataDog/dd-aws-lambda-functions/blob/master/Log/lambda_function.py#L79).
 - Automatically with the `DD_TAGS` environment variable (tags must be a comma-separated list of strings).
 
-## 3. Configuration
+## 3. (optional) Send logs to EU or to a proxy
+
+### Send logs to EU
+
+Set the environment variable `DD_SITE` to `datadoghq.eu` and logs are automatically forwarded to your EU platform.
+
+### Send logs through a proxy
+
+Two environment variables can be used to forward logs through a proxy:
+
+- `DD_URL`: Define the proxy endpoint to forward the logs to
+- `DD_PORT`: Define the proxy port to forward the logs to
+
+## 4. Configuration
 
 - Set the memory to the highest possible value.
 - Set also the timeout limit. We recommends 120 seconds to deal with big files.
 - Hit the `Save and Test` button.
 
-## 4. Testing it
+## 5. Testing it
 
 If the test "succeeded", you are all set! The test log will not show up in the platform.
 
 For S3 logs, there may be some latency between the time a first S3 log file is posted and the Lambda function wakes up.
+
+## 6. (optional) Multiline Log support for s3
+
+If there are multiline logs in s3, set `DD_MULTILINE_LOG_REGEX_PATTERN` environment variable to the specified regex pattern to detect for a new log line.
+
+- Example: for multiline logs beginning with pattern `11/10/2014`: `DD_MULTILINE_LOG_REGEX_PATTERN="\d{2}\/\d{2}\/\d{4}"`
