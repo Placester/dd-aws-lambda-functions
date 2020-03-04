@@ -1,117 +1,67 @@
-# Datadog-lambda
+# Datadog Forwarder
 
+AWS Lambda function to ship logs from S3 and CloudWatch, custom metrics and traces from Lambda functions to Datadog.
 
-AWS lambda function to ship ELB, S3, CloudTrail, VPC, CloudFront and CloudWatch logs to Datadog
+## Features
 
-# Features
+- Forward CloudWatch, ELB, S3, CloudTrail, VPC and CloudFront logs to Datadog
+- Forward S3 events to Datadog
+- Forward Kinesis data stream events to Datadog, only CloudWatch logs are supported
+- Forward custom metrics from AWS Lambda functions via CloudWatch logs
+- Forward traces from AWS Lambda functions via CloudWatch logs
+- Generate and submit enhanced Lambda metrics (`aws.lambda.enhanced.*`) parsed from the AWS REPORT log: duration, billed_duration, max_memory_used, and estimated_cost
 
-- Use AWS Lambda to re-route triggered S3 events to Datadog
-- Use AWS Lambda to re-route triggered Kinesis data stream events to Datadog, only the Cloudwatch logs are supported
-- Cloudwatch, ELB, S3, CloudTrail, VPC and CloudFont logs can be forwarded
-- SSL Security
-- JSON events providing details about S3 documents forwarded
-- Structured meta-information can be attached to the events
-- Multiline Log Support (S3 Only)
+## Installation
 
-# Quick Start
+[![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home#/stacks/create/review?stackName=datadog-forwarder&templateURL=https://datadog-cloudformation-template.s3.amazonaws.com/aws/forwarder/latest.yaml)
 
-The provided Python script must be deployed into your AWS Lambda service. We will explain how in this step-by-step tutorial.
+1. Log into your admin AWS account/role and deploy the CloudFormation Stack with the button above.
+1. Fill in `DdApiKey` and select the appropriate `DdSite`. All other parameters are optional.
+1. Click **Create stack.**
+1. Set up triggers to the installed Forwarder either [automatically](https://docs.datadoghq.com/integrations/amazon_web_services/?tab=allpermissions#automatically-setup-triggers) or [manually](https://docs.datadoghq.com/integrations/amazon_web_services/?tab=allpermissions#manually-setup-triggers).
+1. Repeat the above steps in another region if you operate in multiple AWS regions. 
 
-## 1. Create a new Lambda function
+Note: you can find the installed Forwarder under the stack's "Resources" tab.
 
-- Navigate to the Lambda console: https://console.aws.amazon.com/lambda/home and create a new function.
-- Select `Author from scratch` and give the function a unique name.
-- For `Role`, select `Create new role from template(s)` and give the role a unique name.
-- Under Policy templates, search for and select `s3 object read-only permissions`.
+## Updating
 
-## 2. Provide the code
+### Upgrade to a new version
 
-- Copy paste the code of the Lambda function
-- Set the runtime to `Python 2.7`
-- Set the handler to `lambda_function.lambda_handler`
+1. Find the [datadog-forwarder (if you didn't rename it)](https://console.aws.amazon.com/cloudformation/home#/stacks?filteringText=datadog) CloudFormation stack.
+1. Update the stack using template `https://datadog-cloudformation-template.s3.amazonaws.com/aws/forwarder/latest.yaml`. You can also replace `latest` with a specific version, e.g., `3.0.2.yaml`, if needed.
 
+### Upgrade an older version to +3.0.0
 
-### Parameters
+Since version 3.0.0, the forwarder Lambda function is managed by CloudFormation. To upgrade an older forwarder installation to 3.0.0 and above, follow the steps below.
 
-At the top of the script you'll find a section called `#Parameters`, that's where you want to edit your code.
+1. Install a new forwarder following the [installation](#installation) steps.
+1. Manually migrate a few triggers on the old forwarder to the new one.
+1. Ensure the new forwarder is working as expected.
+1. Update all the triggers on the old forwarder to the new one, following these [steps](https://docs.datadoghq.com/integrations/amazon_web_services/?tab=allpermissions#send-aws-service-logs-to-datadog).
+1. Delete the old forwarder Lambda function when you feel comfortable.
 
-```
-#Parameters
-ddApiKey = "<your_api_key>"
-# metadata: Additional metadata to send with the logs
-metadata = {
-    "ddsourcecategory": "aws"
-}
-```
+### Adjusting forwarder settings
 
-- **API key**:
+1. Find the [datadog-forwarder (if you didn't rename it)](https://console.aws.amazon.com/cloudformation/home#/stacks?filteringText=datadog) CloudFormation stack.
+1. Update the stack using the current template.
+1. Adjust parameter values.
 
-There are 3 possibilities to set your Datadog's API key (available in your Datadog platform):
+Note: It's recommended to adjust forwarder settings through CloudFormation rather than directly editing the Lambda function. The description of settings can be found in the [template.yaml](template.yaml) and the CloudFormation stack creation user interface when you launch the stack. Feel free to submit a pull request to make additional settings adjustable through the template.
 
-1. **KMS Encrypted key (recommended)**: Use the `DD_KMS_API_KEY` environment variable to use a KMS encrypted key. Make sure that the Lambda excution role is listed in the KMS Key user in https://console.aws.amazon.com/iam/home#encryptionKeys.
-2. **Environment Variable**: Use the `DD_API_KEY` environment variable of the Lambda function
-3. **Manual**: Replace `<your_api_key>` in the code: 
+## Settings
 
-- **(Optional) Metadata**:
+To view all the adjustable settings of the forwarder, click "Launch Stack" from the [Installation](#installation) section and you will be prompted with a CloudFormation user interface with all the adjustable settings (you do not have to complete the installation).
 
-You can optionally change the structured metadata. The metadata is merged to all the log events sent by the Lambda script.
-Example: to add the environment value to your logs:
+The technical definition of the settings can be found in the "Parameters" section of [template.yaml](template.yaml).
 
-```
-metadata = {
-    "ddsourcecategory": "aws",
-    "env": "prod",
-}
-```
+## Troubleshooting
 
-- **(Optional) Custom Tags** 
+Set the environment variable `DD_LOG_LEVEL` to `debug` on the Forwarder Lambda function to enable detailed logging temporarily (don't forget to remove it). If the debug logs don't help, please contact [Datadog support](https://www.datadoghq.com/support/).
 
-You have two options to add custom tags to your logs:
+## Notes
 
-- Manually by editing the lambda code [there](https://github.com/DataDog/dd-aws-lambda-functions/blob/master/Log/lambda_function.py#L79).
-- Automatically with the `DD_TAGS` environment variable (tags must be a comma-separated list of strings).
-
-## 3. (optional) Send logs to EU or to a proxy
-
-### Send logs to EU
-
-Set the environment variable `DD_SITE` to `datadoghq.eu` and logs are automatically forwarded to your EU platform.
-
-### Send logs through a proxy
-
-Two environment variables can be used to forward logs through a proxy:
-
-- `DD_URL`: Define the proxy endpoint to forward the logs to
-- `DD_PORT`: Define the proxy port to forward the logs to
-
-## 4. Configuration
-
-- Set the memory to the highest possible value.
-- Set also the timeout limit. We recommends 120 seconds to deal with big files.
-- Hit the `Save and Test` button.
-
-## 5. Testing it
-
-If the test "succeeded", you are all set! The test log will not show up in the platform.
-
-For S3 logs, there may be some latency between the time a first S3 log file is posted and the Lambda function wakes up.
-
-## 6. (optional) Multiline Log support for s3
-
-If there are multiline logs in s3, set `DD_MULTILINE_LOG_REGEX_PATTERN` environment variable to the specified regex pattern to detect for a new log line.
-
-- Example: for multiline logs beginning with pattern `11/10/2014`: `DD_MULTILINE_LOG_REGEX_PATTERN="\d{2}\/\d{2}\/\d{4}"`
-
-## Terraform Usage
-
- ```hcl
-module "dd_appender" {
-  source     = "github.com/Placester/dd-aws-lambda-functions//aws/logs_monitoring"
-  DD_API_KEY = ""
-  role       = ""
-  metadata = {
-    service = "my_service"
-    other_tag = "some_other_value"
-  }
-}
-```
+* For S3 logs, there may be some latency between the time a first S3 log file is posted and the Lambda function wakes up.
+* Currently, the forwarder has to be deployed manually to GovCloud and China, and supports only log forwarding.
+  1. Create a Lambda function using `aws-dd-forwarder-<VERSION>.zip` from the latest [releases](https://github.com/DataDog/datadog-serverless-functions/releases).
+  1. Save your Datadog API key in AWS Secrets Manager, and set environment variable `DD_API_KEY_SECRET_ARN` with the secret ARN on the Lambda function.
+  1. Configure [triggers](https://docs.datadoghq.com/integrations/amazon_web_services/?tab=allpermissions#send-aws-service-logs-to-datadog).
