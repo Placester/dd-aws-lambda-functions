@@ -71,7 +71,7 @@ except ImportError:
     # For backward-compatibility
     DD_FORWARD_TRACES = False
 finally:
-    log.debug(f"DD_FORWARD_TRACES: {DD_FORWARD_TRACES}")
+    log.debug("DD_FORWARD_TRACES: {DD_FORWARD_TRACES}")
 
 
 def get_env_var(envvar, default, boolean=False):
