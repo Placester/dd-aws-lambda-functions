@@ -54,7 +54,7 @@ resource "aws_lambda_function" "fn" {
 
   # Set timeout to ~2 minutes (script only runs for seconds at a time)
   timeout = "${var.timeout}"
-  runtime = "python2.7"
+  runtime = "python3.7"
 
   environment {
     variables = {
