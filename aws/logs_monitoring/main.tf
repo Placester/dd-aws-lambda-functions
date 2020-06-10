@@ -59,6 +59,7 @@ resource "aws_lambda_function" "fn" {
   environment {
     variables = {
       DD_API_KEY = "${var.DD_API_KEY}"
+      EXCLUDE_AT_MATCH = "${var.EXCLUDE_AT_MATCH}"
 
       # convert JSON k:v map to k:v,k:v data dog tags
       DD_TAGS = "${join(",", formatlist("%s:%s", keys(var.metadata), values(var.metadata)))}"
