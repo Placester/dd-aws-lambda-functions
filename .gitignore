@@ -1,3 +1,4 @@
+.DS_Store
 env
 base.zip
 */gen
@@ -8,3 +9,4 @@ base.zip
 *.zip
 .vscode
 **/node_modules
+.idea
