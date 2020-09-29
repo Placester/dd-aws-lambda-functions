@@ -4,17 +4,24 @@ Description: Pushes logs, metrics and traces from AWS to Datadog.
 Mappings:
   Constants:
     DdForwarder:
-      Version: 3.3.0
+      Version: 3.20.0
 Parameters:
   DdApiKey:
     Type: String
     NoEcho: true
-    Default: ""
-    Description: The Datadog API key, which can be found from the APIs page (/account/settings#api). It will be stored in AWS Secrets Manager securely.
+    AllowedPattern: .+
+    Description: The Datadog API key, which can be found from the APIs page (/account/settings#api). It will be stored in AWS Secrets Manager securely. If DdApiKeySecretArn is also set, this value will not be used. This value must still be set, however.
+  DdApiKeySecretArn:
+    Type: String
+    AllowedPattern: "arn:.*:secretsmanager:.*"
+    Default: "arn:aws:secretsmanager:DEFAULT"
+    Description: The ARN of the secret storing the Datadog API key, if you already have it stored in Secrets Manager. You still need to set a dummy value for "DdApiKey" to satisfy the requirement, though that value won't be used.
   DdSite:
     Type: String
     Default: datadoghq.com
     Description: Define your Datadog Site to send data to. For the Datadog EU site, set to datadoghq.eu
+    AllowedPattern: .+
+    ConstraintDescription: DdSite is required
   FunctionName:
     Type: String
     Default: DatadogForwarder
@@ -22,11 +29,17 @@ Parameters:
   MemorySize:
     Type: Number
     Default: 1024
+    MinValue: 128
+    MaxValue: 3008
     Description: Memory size for the Datadog Forwarder Lambda function
   Timeout:
     Type: Number
     Default: 120
     Description: Timeout for the Datadog Forwarder Lambda function
+  TagsCacheTTLSeconds:
+    Type: Number
+    Default: 300
+    Description: TTL (in seconds) for the Datadog tags cache
   ReservedConcurrency:
     Type: Number
     Default: 100
@@ -45,7 +58,7 @@ Parameters:
     Description: Add custom tags to forwarded logs, comma-delimited string, no trailing comma, e.g., env:prod,stack:classic
   DdFetchLambdaTags:
     Type: String
-    Default: false
+    Default: true
     AllowedValues:
       - true
       - false
@@ -56,7 +69,7 @@ Parameters:
     AllowedValues:
       - true
       - false
-    Description: By default, the forwarder sends logs using HTTPS through the port 443. To send logs over a SSL encrypted TCP, set this parameter to true.
+    Description: By default, the forwarder sends logs using HTTPS through the port 443. To send logs over an SSL encrypted TCP connection, set this parameter to true.
   DdNoSsl:
     Type: String
     Default: false
@@ -119,7 +132,7 @@ Parameters:
     AllowedValues:
       - true
       - false
-    Description: Set to false to disable log forwarding, while keep the forwarder forward other observability data, such as metrics and traces from Lambda functions.
+    Description: Set to false to disable log forwarding, while continuing to forward other observability data, such as metrics and traces from Lambda functions.
   DdUseCompression:
     Type: String
     Default: true
@@ -127,6 +140,28 @@ Parameters:
       - true
       - false
     Description: Set to false to disable log compression. Only valid when sending logs over HTTP.
+  DdUsePrivateLink:
+    Type: String
+    Default: false
+    AllowedValues:
+      - true
+      - false
+    Description: Set to true to deploy the Forwarder to a VPC and send logs, metrics, and traces via AWS PrivateLink. When set to true, must also set VPCSecurityGroupIds and VPCSubnetIds. Find more details from https://dtdg.co/private-link.
+  DdUseVPC:
+    Type: String
+    Default: false
+    AllowedValues:
+      - true
+      - false
+    Description: Set to true to deploy the Forwarder to a VPC and send logs, metrics, and traces via a proxy. When set to true, must also set VPCSecurityGroupIds and VPCSubnetIds.
+  VPCSecurityGroupIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: Comma separated list of VPC Security Group Ids. Used when DdUsePrivateLink or DdUseVPC is enabled.
+  VPCSubnetIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: Comma separated list of VPC Subnet Ids. Used when DdUsePrivateLink or DdUseVPC is enabled.
   DdCompressionLevel:
     Type: Number
     Default: 6
@@ -136,7 +171,27 @@ Parameters:
     Type: String
     Default: ""
     Description: ARN for the Permissions Boundary Policy
+  AdditionalTargetLambdaArns:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: Comma separated list of lambda ARNs that get invoked asynchronously with the same input event
+  DdApiUrl:
+    Type: String
+    Default: ""
+    Description: The endpoint URL to forward the metrics to, useful for forwarding metrics through a proxy
+  DdTraceIntakeUrl:
+    Type: String
+    Default: ""
+    Description: The endpoint URL to forward the traces to, useful for forwarding traces through a proxy
 Conditions:
+  IsAWSChina:
+    Fn::Equals:
+      - Ref: AWS::Partition
+      - "aws-cn"
+  CreateDdApiKeySecret:
+    Fn::Equals:
+      - Ref: DdApiKeySecretArn
+      - "arn:aws:secretsmanager:DEFAULT"
   SetFunctionName:
     Fn::Not:
       - Fn::Equals:
@@ -215,6 +270,18 @@ Conditions:
     Fn::Equals:
       - Ref: DdFetchLambdaTags
       - true
+  SetDdUsePrivateLink:
+    Fn::Equals:
+      - Ref: DdUsePrivateLink
+      - true
+  SetDdUseVPC:
+    Fn::Equals:
+      - Ref: DdUseVPC
+      - true
+  UseVPC:
+    Fn::Or:
+      - Condition: SetDdUsePrivateLink
+      - Condition: SetDdUseVPC
   SetDdForwardLog:
     Fn::Equals:
       - Ref: DdForwardLog
@@ -232,6 +299,21 @@ Conditions:
     Fn::Not:
       - Fn::Equals:
           - Ref: PermissionsBoundaryArn
+          - ""
+  SetAdditionalTargetLambdas:
+    Fn::Not:
+      - Fn::Equals:
+          - Fn::Join: ["", !Ref AdditionalTargetLambdaArns]
+          - ""
+  SetDdApiUrl:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: DdApiUrl
+          - ""
+  SetDdTraceIntakeUrl:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: DdTraceIntakeUrl
           - ""
 Resources:
   Forwarder:
@@ -251,7 +333,7 @@ Resources:
       Timeout:
         Ref: Timeout
       CodeUri:
-        Bucket: !Ref ForwarderZipsBucket
+        Bucket: !Ref ForwarderBucket
         Key:
           Fn::Sub:
             - "aws-dd-forwarder-${DdForwarderVersion}.zip"
@@ -259,16 +341,21 @@ Resources:
                 DdForwarderVersion:
                   !FindInMap [Constants, DdForwarder, Version],
               }
-      Layers:
-        - Fn::Sub: arn:aws:lambda:${AWS::Region}:464622532012:layer:Datadog-Python37:11
-        - Fn::Sub: arn:aws:lambda:${AWS::Region}:464622532012:layer:Datadog-Trace-Forwarder-Python37:5
       Tags:
         dd_forwarder_version: !FindInMap [Constants, DdForwarder, Version]
       Environment:
         Variables:
-          DD_ENHANCED_METRICS: false
+          DD_ENHANCED_METRICS: "false"
           DD_API_KEY_SECRET_ARN:
-            Ref: DdApiKeySecret
+            Fn::If:
+              - CreateDdApiKeySecret
+              - Ref: DdApiKeySecret
+              - Ref: DdApiKeySecretArn
+          DD_S3_BUCKET_NAME:
+            Fn::If:
+              - SetDdFetchLambdaTags
+              - Ref: ForwarderBucket
+              - Ref: AWS::NoValue
           DD_SITE:
             Ref: DdSite
           DD_TAGS:
@@ -276,6 +363,8 @@ Resources:
               - SetDdTags
               - Ref: DdTags
               - Ref: AWS::NoValue
+          DD_TAGS_CACHE_TTL_SECONDS:
+            Ref: TagsCacheTTLSeconds
           DD_FETCH_LAMBDA_TAGS:
             Fn::If:
               - SetDdFetchLambdaTags
@@ -356,6 +445,28 @@ Resources:
               - SetDdCompressionLevel
               - Ref: DdCompressionLevel
               - Ref: AWS::NoValue
+          DD_USE_PRIVATE_LINK:
+            Fn::If:
+              - SetDdUsePrivateLink
+              - true
+              - false
+          DD_ADDITIONAL_TARGET_LAMBDAS:
+            Fn::If:
+              - SetAdditionalTargetLambdas
+              - !Join
+                - ","
+                - !Ref AdditionalTargetLambdaArns
+              - !Ref AWS::NoValue
+          DD_API_URL:
+            Fn::If:
+              - SetDdApiUrl
+              - Ref: DdApiUrl
+              - Ref: AWS::NoValue
+          DD_TRACE_INTAKE_URL:
+            Fn::If:
+              - SetDdTraceIntakeUrl
+              - Ref: DdTraceIntakeUrl
+              - Ref: AWS::NoValue
       ReservedConcurrentExecutions:
         Ref: ReservedConcurrency
       PermissionsBoundary:
@@ -363,18 +474,39 @@ Resources:
           - SetPermissionsBoundary
           - Ref: PermissionsBoundaryArn
           - Ref: AWS::NoValue
+      VpcConfig:
+        Fn::If:
+          - UseVPC
+          - SecurityGroupIds: !Ref VPCSecurityGroupIds
+            SubnetIds: !Ref VPCSubnetIds
+          - Ref: AWS::NoValue
       Policies:
         - Version: "2012-10-17"
           Statement:
             - Effect: Allow
               Action:
+                - s3:*
+              Resource:
+                - Fn::Join:
+                    - "/"
+                    - - Fn::GetAtt: "ForwarderBucket.Arn"
+                      - "*"
+            - Effect: Allow
+              Action:
                 - s3:GetObject
-              Resource: "arn:aws:s3:::*"
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+              Resource: "*"
             - Effect: Allow
               Action:
                 - secretsmanager:GetSecretValue
               Resource:
-                Ref: DdApiKeySecret
+                Fn::If:
+                  - CreateDdApiKeySecret
+                  - Ref: DdApiKeySecret
+                  - Ref: DdApiKeySecretArn
             - !If
               - SetDdFetchLambdaTags
               - Effect: Allow
@@ -382,6 +514,40 @@ Resources:
                   - tag:GetResources
                 Resource: "*"
               - Ref: AWS::NoValue
+            - !If
+              - UseVPC
+              - Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                Resource: "*"
+              - Ref: AWS::NoValue
+            - !If
+              - SetAdditionalTargetLambdas
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Ref AdditionalTargetLambdaArns
+              - Ref: AWS::NoValue
+  CloudWatchLogsPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref "Forwarder"
+      Action: lambda:InvokeFunction
+      Principal:
+        Fn::If:
+          - IsAWSChina
+          - !Sub "logs.${AWS::Region}.amazonaws.com.cn"
+          - !Sub "logs.${AWS::Region}.amazonaws.com"
+      SourceAccount: !Ref "AWS::AccountId"
+  S3Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref "Forwarder"
+      Action: lambda:InvokeFunction
+      Principal: "s3.amazonaws.com"
+      SourceAccount: !Ref "AWS::AccountId"
   LogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -391,17 +557,28 @@ Resources:
         Ref: LogRetentionInDays
   DdApiKeySecret:
     Type: AWS::SecretsManager::Secret
+    Condition: CreateDdApiKeySecret
     Properties:
       Description: Datadog API Key
       SecretString:
         Ref: DdApiKey
-  ForwarderZipsBucket:
+  ForwarderBucket:
     Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: "aws:kms"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
   ForwarderZip:
     Type: Custom::ForwarderZip
     Properties:
       ServiceToken: !GetAtt "ForwarderZipCopier.Arn"
-      DestZipsBucket: !Ref "ForwarderZipsBucket"
+      DestZipsBucket: !Ref "ForwarderBucket"
       SourceZipUrl:
         Fn::If:
           - SetSourceZipUrl
@@ -497,13 +674,13 @@ Resources:
               Resource:
                 - Fn::Join:
                     - "/"
-                    - - Fn::GetAtt: "ForwarderZipsBucket.Arn"
+                    - - Fn::GetAtt: "ForwarderBucket.Arn"
                       - "*"
             - Effect: Allow
               Action:
                 - s3:ListBucket
               Resource:
-                - Fn::GetAtt: "ForwarderZipsBucket.Arn"
+                - Fn::GetAtt: "ForwarderBucket.Arn"
             - !If
               - SetS3SourceZip
               - Effect: Allow
@@ -512,7 +689,7 @@ Resources:
                 Resource:
                   - Fn::Join:
                       - ""
-                      - - "arn:aws:s3:::"
+                      - - "arn:*:s3:::"
                         - !Select [1, !Split ["s3://", !Ref SourceZipUrl]]
               - Ref: AWS::NoValue
       Environment:
@@ -570,11 +747,22 @@ Metadata:
           - ExcludeAtMatch
           - IncludeAtMatch
       - Label:
-          default: Experimental (Optional)
-        Parameters:
-          - DdFetchLambdaTags
-      - Label:
           default: Advanced (Optional)
         Parameters:
+          - DdFetchLambdaTags
+          - TagsCacheTTLSeconds
           - SourceZipUrl
           - PermissionsBoundaryArn
+          - DdApiKeySecretArn
+          - DdUsePrivateLink
+          - DdUseVPC
+          - VPCSecurityGroupIds
+          - VPCSubnetIds
+          - DdApiUrl
+          - DdTraceIntakeUrl
+          - AdditionalTargetLambdaArns
+    ParameterLabels:
+      DdApiKey:
+        default: "DdApiKey *"
+      DdSite:
+        default: "DdSite *"
