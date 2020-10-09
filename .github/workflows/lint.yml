@@ -1,0 +1,33 @@
+name: Lint
+
+on: [pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.7
+
+      - name: Install pip
+        run: |
+          python -m pip install --upgrade pip
+
+      - name: Lint with flake8
+        run: |
+          pip install flake8
+          flake8 ./aws/logs_monitoring/ --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Check formatting with Black
+        run: |
+          pip install black
+          black --check ./aws/logs_monitoring
+
+      - name: Lint CloudFormation template with cfn-lint
+        uses: scottbrenner/cfn-lint-action@master
+        with:
+          args: "aws/logs_monitoring/template.yaml"

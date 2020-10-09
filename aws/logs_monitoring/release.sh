@@ -63,30 +63,29 @@ if [ "$PROD_RELEASE" = true ] ; then
     # Get the latest code
     git pull origin master
 
-    # Bump version number
+    # Bump version number in settings.py and template.yml
     echo "Bumping the current version number to the desired"
-    perl -pi -e "s/DD_FORWARDER_VERSION = \"${CURRENT_VERSION}/DD_FORWARDER_VERSION = \"${VERSION}/g" lambda_function.py
-    perl -pi -e "s/Version: ${CURRENT_VERSION}/Version: ${VERSION}/g" template.yaml
+    perl -pi -e "s/DD_FORWARDER_VERSION = \"[0-9\.]+/DD_FORWARDER_VERSION = \"${VERSION}/g" settings.py
+    perl -pi -e "s/Version: [0-9\.]+/Version: ${VERSION}/g" template.yaml
 
     # Commit version number changes to git
-    git add lambda_function.py template.yaml README.md
+    git add settings.py template.yaml
     git commit -m "Bump version from ${CURRENT_VERSION} to ${VERSION}"
     git push origin master
 
     # Create a github release
     echo "Release aws-dd-forwarder-${VERSION} to github"
     go get github.com/github/hub
-    rm -f aws-dd-forwarder-*.zip
-    zip -r aws-dd-forwarder-${VERSION}.zip .
-    hub release create -a aws-dd-forwarder-${VERSION}.zip -m "aws-dd-forwarder-${VERSION}" aws-dd-forwarder-${VERSION}
+    ./tools/build_bundle.sh "${VERSION}"
+
+    hub release create -a .forwarder/aws-dd-forwarder-${VERSION}.zip -m "aws-dd-forwarder-${VERSION}" aws-dd-forwarder-${VERSION}
     TEMPLATE_URL="https://${BUCKET}.s3.amazonaws.com/aws/forwarder/latest.yaml"
     FORWARDER_SOURCE_URL="https://github.com/DataDog/datadog-serverless-functions/releases/download/aws-dd-forwarder-${VERSION}/aws-dd-forwarder-${VERSION}.zip'"
 else
     echo "About to release non-public staging version of forwarder, upload aws-dd-forwarder-${VERSION} to s3, and upload the template.yaml to s3://${BUCKET}/aws/forwarder-staging/${VERSION}.yaml"
     # Upload to s3 instead of github
-    rm -f aws-dd-forwarder-*.zip
-    zip -r aws-dd-forwarder-${VERSION}.zip .
-    aws s3 cp aws-dd-forwarder-${VERSION}.zip s3://${BUCKET}/aws/forwarder-staging-zip/aws-dd-forwarder-${VERSION}.zip
+    ./tools/build_bundle.sh "${VERSION}"
+    aws s3 cp .forwarder/aws-dd-forwarder-${VERSION}.zip s3://${BUCKET}/aws/forwarder-staging-zip/aws-dd-forwarder-${VERSION}.zip
     TEMPLATE_URL="https://${BUCKET}.s3.amazonaws.com/aws/forwarder-staging/latest.yaml"
     FORWARDER_SOURCE_URL="s3://${BUCKET}/aws/forwarder-staging-zip/aws-dd-forwarder-${VERSION}.zip"
 fi

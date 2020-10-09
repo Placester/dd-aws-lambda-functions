@@ -6,6 +6,10 @@ variable "DD_API_KEY" {
   description = "This token is used to associate AWS CloudWatch logs to a log in your Logentries account."
 }
 
+variable "exclude_at_match" {
+  description = "This token is used to exclude forwarding CW log rows (to DD) that match regex."
+}
+
 variable "function_name" {
   default = "dd_log_appender"
 }
@@ -59,6 +63,7 @@ resource "aws_lambda_function" "fn" {
   environment {
     variables = {
       DD_API_KEY = "${var.DD_API_KEY}"
+      EXCLUDE_AT_MATCH = "${var.exclude_at_match}"
 
       # convert JSON k:v map to k:v,k:v data dog tags
       DD_TAGS = "${join(",", formatlist("%s:%s", keys(var.metadata), values(var.metadata)))}"
